@@ -1,4 +1,37 @@
 import streamlit as st
+
+# 화면 너비 감지
+try:
+    screen_width = st.query_params.get("width", None)
+except:
+    screen_width = None
+
+# 기본값 (fallback)
+is_mobile = False
+
+# 👉 JS 기반 width 감지
+st.markdown(
+    """
+    <script>
+    const width = window.innerWidth;
+    const url = new URL(window.location);
+    url.searchParams.set("width", width);
+    window.location.replace(url);
+    </script>
+    """,
+    unsafe_allow_html=True
+)
+
+# 👉 width 기준 판단
+if screen_width:
+    try:
+        if int(screen_width) < 768:
+            is_mobile = True
+    except:
+        pass
+    
+
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -61,6 +94,8 @@ def get_live_data():
 # =========================
 # 사이드바
 # =========================
+is_mobile = st.sidebar.toggle("📱 모바일 모드", False)
+
 st.sidebar.title("⚙️ 시뮬 설정")
 
 use_live = st.sidebar.toggle("📡 실시간 데이터 사용", True)
@@ -110,7 +145,7 @@ def input_box(label, key, default, step=1.0, disabled=False, fmt=None):
 # 입력창
 # =========================
 qqqi_qty = input_box("QQQI 수량", "qqqi_qty", 500, 10)
-schd_qty = input_box("SCHD 수량", "schd_qty", 5000, 10)
+schd_qty = input_box("SCHD 수량", "schd_qty", 5000, 100)
 
 qqqi_div = input_box("QQQI 월 배당 ($)", "qqqi_div", 0.61, 0.01, disabled=use_live)
 schd_div = input_box("SCHD 분기 배당 ($)", "schd_div", 0.28, 0.01, disabled=use_live)
@@ -126,10 +161,10 @@ if use_live:
     st.sidebar.markdown("📊 **현재 실시간 값**")
 
     #st.sidebar.write(f"QQQI 가격: ${st.session_state.qqqi_price:,.2f}")
-    st.sidebar.write(f"QQQI 가격: ${float(st.session_state.qqqi_price):,.2f}")
-    st.sidebar.write(f"환율: {st.session_state.exchange_rate:,.0f}원")
     st.sidebar.write(f"QQQI 배당: ${st.session_state.qqqi_div:,.4f}")
     st.sidebar.write(f"SCHD 배당: ${st.session_state.schd_div:,.4f}")
+    st.sidebar.write(f"환율: {st.session_state.exchange_rate:,.0f}원")
+    st.sidebar.write(f"QQQI 가격: ${float(st.session_state.qqqi_price):,.2f}")
 
     if st.session_state.last_update:
         st.sidebar.caption(
@@ -222,8 +257,9 @@ df["분기 차이"] = (df["분기 배당"] - df["분기 생활비"]).astype("Int
 df.loc[(df.index + 1) % 3 != 0,
        ["분기 배당","분기 생활비","분기 차이"]] = None
 
-st.title("💰 Dividend AI")
-st.subheader("QQQI 월배당 + SCHD 분기배당 기반 현금흐름 시뮬레이션")
+st.subheader("💰 Dividend AI (QQQI + SCHD)")
+#st.title("💰 Dividend AI (QQQI + SCHD)")
+#st.subheader("QQQI 월배당 + SCHD 분기배당 기반 현금흐름 시뮬레이션")
 
 df_display = df[
     [
@@ -252,7 +288,105 @@ styled = df_display.style.format({
     "분기 차이": "{:,.0f}"
 }).apply(highlight, axis=1)
 
-st.dataframe(styled, height=520)
+if not is_mobile:
+    # 💻 PC → 기존 그대로
+    st.dataframe(styled, height=520)
+
+else:
+    # 📱 모바일 → 심플 + 핵심 유지
+    # st.subheader("📱 모바일 요약")
+
+    col1, col2 = st.columns(2)
+    col1.metric("QQQI", f"{qqqi_qty:,}주")
+    col2.metric("SCHD", f"{schd_qty:,}주")
+
+    # 👉 핵심: 원화 + 달러 둘 다 유지
+    mobile_df = df[
+        [
+            "날짜",
+            "QQQI", #"QQQI($)",
+            "SCHD", #"SCHD($)",
+            "월 생활비",
+            "분기 배당", "분기 차이"
+        ]
+    ].copy()
+
+    st.dataframe(
+        mobile_df.style.format({
+            #"QQQI($)": "{:,.2f}",
+            #"SCHD($)": "{:,.2f}",
+            "월 생활비": "{:,.0f}",
+            "분기 배당": "{:,.0f}",
+            "분기 차이": "{:,.0f}"
+        }),
+        height=400
+    )
+
+# =========================
+# 그래프 시작
+# =========================
+import plotly.graph_objects as go
+import pandas as pd
+
+df_q = df.dropna(subset=["분기 배당"]).copy()
+
+# ✅ 1️⃣ 날짜 타입 변환 (🔥 핵심)
+df_q['날짜'] = pd.to_datetime(df_q['날짜'], format="%Y-%m")
+
+# ✅ 색상
+colors = df_q["분기 차이"].apply(lambda x: "green" if x >= 0 else "red")
+
+fig = go.Figure()
+
+# ✅ 분기 배당
+fig.add_trace(go.Scatter(
+    x=df_q['날짜'],
+    y=df_q['분기 배당'],
+    name='분기 배당',
+    hovertemplate="📅 %{x|%Y-%m}<br>💰 %{y:,.0f}원"
+))
+
+# ✅ 분기 생활비
+fig.add_trace(go.Scatter(
+    x=df_q['날짜'],
+    y=df_q['분기 생활비'],
+    name='분기 생활비',
+    hovertemplate="📅 %{x|%Y-%m}<br>💸 %{y:,.0f}원"
+))
+
+# ✅ 분기 차이
+fig.add_trace(go.Bar(
+    x=df_q['날짜'],
+    y=df_q['분기 차이'],
+    name='분기 차이',
+    marker_color=colors,
+    hovertemplate="📅 %{x|%Y-%m}<br>📊 %{y:,.0f}원"
+))
+
+# ✅ 2️⃣ Y축 백만원 단위 (🔥 핵심)
+fig.update_layout(
+    title="📊 분기 배당 vs 생활비",
+    yaxis_title="금액 (백만원)",
+    hovermode="x unified",
+    xaxis=dict(
+        hoverformat="%Y-%m"   # 🔥 이거 하나면 끝
+    ),
+    yaxis=dict(
+        tickvals=[i * 1_000_000 for i in range(0, int(df_q["분기 배당"].max() / 1_000_000) + 2)],
+        ticktext=[f"{i}" for i in range(0, int(df_q["분기 배당"].max() / 1_000_000) + 2)]
+    )
+)
+
+fig.add_hline(y=0, line_dash="dash")
+
+st.plotly_chart(fig, use_container_width=True)
+
+# =========================
+# 그래프 종료
+# =========================
+
+
+
 
 
 # =========================
