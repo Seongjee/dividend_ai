@@ -1,37 +1,4 @@
 import streamlit as st
-
-# 화면 너비 감지
-try:
-    screen_width = st.query_params.get("width", None)
-except:
-    screen_width = None
-
-# 기본값 (fallback)
-is_mobile = False
-
-# 👉 JS 기반 width 감지
-st.markdown(
-    """
-    <script>
-    const width = window.innerWidth;
-    const url = new URL(window.location);
-    url.searchParams.set("width", width);
-    window.location.replace(url);
-    </script>
-    """,
-    unsafe_allow_html=True
-)
-
-# 👉 width 기준 판단
-if screen_width:
-    try:
-        if int(screen_width) < 768:
-            is_mobile = True
-    except:
-        pass
-    
-
-import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -39,8 +6,7 @@ from dateutil.relativedelta import relativedelta
 import json
 import os
 import yfinance as yf
-
-SAVE_FILE = "config.json"
+import streamlit.components.v1 as components
 
 plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
@@ -52,21 +18,6 @@ st.set_page_config(layout="wide")
 # =========================
 if "initialized" not in st.session_state:
     st.session_state.initialized = True
-
-# =========================
-# 저장
-# =========================
-def load_config():
-    if os.path.exists(SAVE_FILE):
-        with open(SAVE_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_config(data):
-    with open(SAVE_FILE, "w") as f:
-        json.dump(data, f)
-
-config = load_config()
 
 # =========================
 # 📡 실시간 데이터
@@ -95,6 +46,19 @@ def get_live_data():
 # 사이드바
 # =========================
 is_mobile = st.sidebar.toggle("📱 모바일 모드", False)
+st.sidebar.caption("👉 입력값은 내 기기에만 저장됩니다")
+
+if st.sidebar.button("🔄 초기화"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
+st.sidebar.markdown("### 📱 화면 모드")
+
+if is_mobile:
+    st.caption("👉 모바일 최적화 화면")
+else:
+    st.caption("👉 PC 전체 화면")
 
 st.sidebar.title("⚙️ 시뮬 설정")
 
@@ -103,6 +67,31 @@ use_live = st.sidebar.toggle("📡 실시간 데이터 사용", True)
 # 👉 업데이트 시간 표시용
 if "last_update" not in st.session_state:
     st.session_state.last_update = None
+
+
+components.html(
+    """
+    <script>
+    const inputs = window.parent.document.querySelectorAll('input');
+
+    inputs.forEach(input => {
+        const key = input.getAttribute('aria-label');
+
+        // 불러오기
+        if(localStorage.getItem(key)){
+            input.value = localStorage.getItem(key);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // 저장
+        input.addEventListener('change', () => {
+            localStorage.setItem(key, input.value);
+        });
+    });
+    </script>
+    """,
+    height=0
+)
 
 # =========================
 # 🔥 실시간 먼저 적용 (위젯 생성 전)
@@ -130,28 +119,41 @@ if use_live:
 # =========================
 # 입력 함수
 # =========================
-def input_box(label, key, default, step=1.0, disabled=False, fmt=None):
+def input_int(label, key, default, step=1, disabled=False):
     if key not in st.session_state:
-        st.session_state[key] = config.get(key, default)
+        st.session_state[key] = int(default)
+
     return st.sidebar.number_input(
         label,
         step=step,
         key=key,
         disabled=disabled,
-        format=fmt
+        format="%d",
+        value=int(st.session_state[key])
+    )
+
+def input_float(label, key, default, step=0.01, disabled=False):
+    if key not in st.session_state:
+        st.session_state[key] = float(default)
+
+    return st.sidebar.number_input(
+        label,
+        step=float(step),              # 🔥 안전장치
+        key=key,
+        disabled=disabled,
+        value=float(st.session_state[key])
     )
 
 # =========================
 # 입력창
 # =========================
-qqqi_qty = input_box("QQQI 수량", "qqqi_qty", 500, 10)
-schd_qty = input_box("SCHD 수량", "schd_qty", 5000, 100)
+qqqi_qty = input_int("QQQI 수량", "qqqi_qty", 500)
+schd_qty = input_int("SCHD 수량", "schd_qty", 5000)
 
-qqqi_div = input_box("QQQI 월 배당 ($)", "qqqi_div", 0.61, 0.01, disabled=use_live)
-schd_div = input_box("SCHD 분기 배당 ($)", "schd_div", 0.28, 0.01, disabled=use_live)
-exchange_rate = input_box("환율", "exchange_rate", 1499, 1, disabled=use_live)
-qqqi_price = input_box("QQQI 가격 ($)", "qqqi_price", 50.0, 0.01, disabled=use_live, fmt="%.2f")
-
+qqqi_div = input_float("QQQI 월 배당 ($)", "qqqi_div", 0.61, 0.01, disabled=use_live)
+schd_div = input_float("SCHD 분기 배당 ($)", "schd_div", 0.28, 0.01, disabled=use_live)
+exchange_rate = input_float("환율", "exchange_rate", 1499.0, 1.0, disabled=use_live)
+qqqi_price = input_float("QQQI 가격 ($)", "qqqi_price", 50.0, 0.01, disabled=use_live)
 
 # =========================
 # 🔥 현재값 표시 (핵심 추가)
@@ -179,7 +181,7 @@ growth_rate = st.sidebar.slider("SCHD 성장률 (%)", 0.0, 10.0, 5.0) / 100
 qqqi_decay = st.sidebar.slider("QQQI 감소율 (%)", 0.0, 10.0, 3.0) / 100
 inflation_rate = st.sidebar.slider("물가 상승률 (%)", 0.0, 5.0, 3.0) / 100
 
-monthly_need_m = input_box("월 생활비 (백만원)", "monthly_need_m", 200, 10)
+monthly_need_m = input_int("월 생활비 (백만원)", "monthly_need_m", 200)
 monthly_need = monthly_need_m * 10000
 
 years = st.sidebar.selectbox("시뮬 기간", [10, 20, 30])
@@ -187,18 +189,6 @@ months = years * 12
 
 reinvest = st.sidebar.toggle("🔁 배당 재투자", True)
 cash_years = st.sidebar.slider("💰 현금으로 버틸 기간 (년)", 0, 3, 1)
-
-# =========================
-# 저장
-# =========================
-save_config({
-    "qqqi_qty": qqqi_qty,
-    "schd_qty": schd_qty,
-    "qqqi_div": st.session_state.qqqi_div,
-    "schd_div": st.session_state.schd_div,
-    "exchange_rate": st.session_state.exchange_rate,
-    "monthly_need_m": monthly_need_m
-})
 
 # =========================
 # 시뮬레이션 (기존 그대로)
@@ -253,6 +243,7 @@ df = pd.DataFrame(data, columns=[
 df["분기 배당"] = df["원화"].rolling(3).sum().round().astype("Int64")
 df["분기 생활비"] = df["월 생활비"].rolling(3).sum().round().astype("Int64")
 df["분기 차이"] = (df["분기 배당"] - df["분기 생활비"]).astype("Int64")
+df["상태"] = df["분기 차이"].apply(lambda x: "✅" if x > 0 else "❌")
 
 df.loc[(df.index + 1) % 3 != 0,
        ["분기 배당","분기 생활비","분기 차이"]] = None
@@ -279,6 +270,7 @@ def highlight(row):
             return ["background-color: rgba(255,0,0,0.15)"] * len(row)
     return ["color:#999"] * len(row)
 
+
 styled = df_display.style.format({
     "QQQI($)": "{:,.2f}",
     "SCHD($)": "{:,.2f}",
@@ -295,10 +287,6 @@ if not is_mobile:
 else:
     # 📱 모바일 → 심플 + 핵심 유지
     # st.subheader("📱 모바일 요약")
-
-    col1, col2 = st.columns(2)
-    col1.metric("QQQI", f"{qqqi_qty:,}주")
-    col2.metric("SCHD", f"{schd_qty:,}주")
 
     # 👉 핵심: 원화 + 달러 둘 다 유지
     mobile_df = df[
@@ -343,7 +331,8 @@ fig.add_trace(go.Scatter(
     x=df_q['날짜'],
     y=df_q['분기 배당'],
     name='분기 배당',
-    hovertemplate="📅 %{x|%Y-%m}<br>💰 %{y:,.0f}원"
+    fill='tozeroy',
+    hovertemplate="%{y:,.0f}원"
 ))
 
 # ✅ 분기 생활비
@@ -351,7 +340,8 @@ fig.add_trace(go.Scatter(
     x=df_q['날짜'],
     y=df_q['분기 생활비'],
     name='분기 생활비',
-    hovertemplate="📅 %{x|%Y-%m}<br>💸 %{y:,.0f}원"
+    line=dict(dash='dash'),
+    hovertemplate="%{y:,.0f}원"
 ))
 
 # ✅ 분기 차이
@@ -360,21 +350,25 @@ fig.add_trace(go.Bar(
     y=df_q['분기 차이'],
     name='분기 차이',
     marker_color=colors,
-    hovertemplate="📅 %{x|%Y-%m}<br>📊 %{y:,.0f}원"
+    opacity=0.5,
+    hovertemplate="%{y:,.0f}원"
 ))
 
 # ✅ 2️⃣ Y축 백만원 단위 (🔥 핵심)
 fig.update_layout(
+    plot_bgcolor='white',
+    paper_bgcolor='white',
     title="📊 분기 배당 vs 생활비",
-    yaxis_title="금액 (백만원)",
+    yaxis_title="금액 (원)",
     hovermode="x unified",
     xaxis=dict(
-        hoverformat="%Y-%m"   # 🔥 이거 하나면 끝
-    ),
-    yaxis=dict(
-        tickvals=[i * 1_000_000 for i in range(0, int(df_q["분기 배당"].max() / 1_000_000) + 2)],
-        ticktext=[f"{i}" for i in range(0, int(df_q["분기 배당"].max() / 1_000_000) + 2)]
+        hoverformat="%Y-%m"
     )
+)
+
+fig.update_yaxes(
+    tickformat=",",
+    title_text="금액 (원)"
 )
 
 fig.add_hline(y=0, line_dash="dash")
@@ -382,11 +376,8 @@ fig.add_hline(y=0, line_dash="dash")
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# 그래프 종료
+# 그래프 여기까지
 # =========================
-
-
-
 
 
 # =========================
