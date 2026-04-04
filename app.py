@@ -45,8 +45,9 @@ def get_live_data():
 # =========================
 # 사이드바
 # =========================
+
 is_mobile = st.sidebar.toggle("📱 모바일 모드", False)
-st.sidebar.caption("👉 입력값은 내 기기에만 저장됩니다")
+st.sidebar.caption("🔗 현재 설정은 URL에 자동 저장됩니다")
 
 if st.sidebar.button("🔄 초기화"):
     for key in list(st.session_state.keys()):
@@ -67,31 +68,6 @@ use_live = st.sidebar.toggle("📡 실시간 데이터 사용", True)
 # 👉 업데이트 시간 표시용
 if "last_update" not in st.session_state:
     st.session_state.last_update = None
-
-
-components.html(
-    """
-    <script>
-    const inputs = window.parent.document.querySelectorAll('input');
-
-    inputs.forEach(input => {
-        const key = input.getAttribute('aria-label');
-
-        // 불러오기
-        if(localStorage.getItem(key)){
-            input.value = localStorage.getItem(key);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        // 저장
-        input.addEventListener('change', () => {
-            localStorage.setItem(key, input.value);
-        });
-    });
-    </script>
-    """,
-    height=0
-)
 
 # =========================
 # 🔥 실시간 먼저 적용 (위젯 생성 전)
@@ -119,29 +95,35 @@ if use_live:
 # =========================
 # 입력 함수
 # =========================
+def load_from_query(key, default, cast_type=int):
+    if key in st.query_params:
+        try:
+            return cast_type(st.query_params[key])
+        except:
+            return default
+    return default
+
 def input_int(label, key, default, step=1, disabled=False):
     if key not in st.session_state:
-        st.session_state[key] = int(default)
+        st.session_state[key] = load_from_query(key, default, int)
 
     return st.sidebar.number_input(
         label,
         step=step,
         key=key,
         disabled=disabled,
-        format="%d",
-        value=int(st.session_state[key])
+        format="%d"
     )
 
 def input_float(label, key, default, step=0.01, disabled=False):
     if key not in st.session_state:
-        st.session_state[key] = float(default)
+        st.session_state[key] = load_from_query(key, default, float)
 
     return st.sidebar.number_input(
         label,
-        step=float(step),              # 🔥 안전장치
+        step=float(step),
         key=key,
-        disabled=disabled,
-        value=float(st.session_state[key])
+        disabled=disabled
     )
 
 # =========================
@@ -155,6 +137,21 @@ schd_div = input_float("SCHD 분기 배당 ($)", "schd_div", 0.28, 0.01, disable
 exchange_rate = input_float("환율", "exchange_rate", 1499.0, 1.0, disabled=use_live)
 qqqi_price = input_float("QQQI 가격 ($)", "qqqi_price", 50.0, 0.01, disabled=use_live)
 
+# =========================
+# 🔥 입력값 URL 저장
+# =========================
+for key in [
+    "qqqi_qty",
+    "schd_qty",
+    "monthly_need_m",
+    "qqqi_div",
+    "schd_div",
+    "exchange_rate",
+    "qqqi_price"
+]:
+    if key in st.session_state:
+        st.query_params[key] = st.session_state[key]
+        
 # =========================
 # 🔥 현재값 표시 (핵심 추가)
 # =========================
@@ -249,9 +246,25 @@ df.loc[(df.index + 1) % 3 != 0,
        ["분기 배당","분기 생활비","분기 차이"]] = None
 
 st.subheader("💰 Dividend AI (QQQI + SCHD)")
-#st.title("💰 Dividend AI (QQQI + SCHD)")
-#st.subheader("QQQI 월배당 + SCHD 분기배당 기반 현금흐름 시뮬레이션")
 
+# 🔥 분기 KPI 추가
+quarter_now = df["원화"].iloc[-3:].sum()
+quarter_need = df["월 생활비"].iloc[-3:].sum()
+quarter_gap = quarter_now - quarter_need
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric(f"{years}년 후 분기 배당", f"{quarter_now:,.0f}원")
+col2.metric(f"{years}년 후 분기 생활비", f"{quarter_need:,.0f}원")
+col3.metric(f"{years}년 후 분기 차이", f"{quarter_gap:,.0f}원")
+
+# 🔥 상태 표시
+if quarter_gap > 0:
+    st.success("🔥 배당으로 생활 가능")
+else:
+    st.warning("⚠️ 아직 부족")
+
+#
 df_display = df[
     [
         "연차","날짜",
@@ -293,7 +306,7 @@ else:
         [
             "날짜",
             "QQQI", #"QQQI($)",
-            "SCHD", #"SCHD($)",
+            #"SCHD", #"SCHD($)",
             "월 생활비",
             "분기 배당", "분기 차이"
         ]
@@ -349,7 +362,7 @@ fig.add_trace(go.Bar(
     x=df_q['날짜'],
     y=df_q['분기 차이'],
     name='분기 차이',
-    marker_color=colors,
+    marker_color = ['#2ecc71' if x >= 0 else '#e74c3c' for x in df_q["분기 차이"]],
     opacity=0.5,
     hovertemplate="%{y:,.0f}원"
 ))
@@ -363,6 +376,16 @@ fig.update_layout(
     hovermode="x unified",
     xaxis=dict(
         hoverformat="%Y-%m"
+    )
+)
+
+fig.update_layout(
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
     )
 )
 
