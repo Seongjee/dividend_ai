@@ -266,6 +266,7 @@ with st.sidebar.expander("💰 현재 값", expanded=not st.session_state.compac
 with st.sidebar.expander("📊 시뮬 옵션", expanded=False):
     st.slider("현금으로 버틸 기간 (년)", 0, 3, key="cash_years")
     st.toggle("배당 재투자(QQQI)", key="reinvest")
+    st.caption("ON 시 배당금으로 QQQI 재매수 가정")
     st.slider("세율 (%)", 0, 30, key="tax_rate_pct")
     st.slider("물가 상승률 (%)", 0.0, 5.0, key="inflation_rate_pct", step=0.1)
     st.slider("SCHD 성장률 (%)", 0.0, 10.0, key="growth_rate_pct", step=0.1)
@@ -403,7 +404,7 @@ if st.session_state.compact_view:
 
     st.dataframe(
         styled,
-        height=320,
+        height=340,
         use_container_width=True,
         hide_index=True
     )
@@ -411,8 +412,8 @@ else:
     df_display = df[
         [
             "연차", "날짜",
-            "QQQI", "QQQI($)",
-            "SCHD", "SCHD($)",
+            "QQQI", "QQQI 배당($)",
+            "SCHD", "SCHD 배당($)",
             "월 생활비",
             "분기 배당", "분기 생활비", "분기 차이"
         ]
@@ -475,7 +476,7 @@ fig.add_trace(go.Scatter(
     mode="lines",
     line=dict(width=0),
     customdata=df_q["차이표시"],
-    hovertemplate="차이 %{customdata}<extra></extra>",
+    hovertemplate="<b>차이 %{customdata}</b><extra></extra>",
     showlegend=False,
     name="차이"
 ))
@@ -582,7 +583,7 @@ for i in range(len(quarter_df2)):
 stable_text = f"{stable_start}" if stable_start else "없음"
 
 summary_df = pd.DataFrame({
-    "체크": ["월 300만원", "QQQI 졸업", "안정 시점"],
+    "항목": ["월 300만원", "QQQI 졸업", "안정 시점"],
     "결과": [reach_text, graduate_text, stable_text]
 })
 
