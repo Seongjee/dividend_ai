@@ -265,14 +265,13 @@ with st.sidebar.expander("💰 현재 값", expanded=not st.session_state.compac
 
 with st.sidebar.expander("📊 시뮬 옵션", expanded=False):
     st.slider("현금으로 버틸 기간 (년)", 0, 3, key="cash_years")
-    st.toggle("배당 재투자", key="reinvest")
-    st.caption("배당 → QQQI 재투자 가정")
+    st.toggle("배당 재투자(QQQI)", key="reinvest")
     st.slider("세율 (%)", 0, 30, key="tax_rate_pct")
     st.slider("물가 상승률 (%)", 0.0, 5.0, key="inflation_rate_pct", step=0.1)
     st.slider("SCHD 성장률 (%)", 0.0, 10.0, key="growth_rate_pct", step=0.1)
     st.slider("QQQI 감소율 (%)", 0.0, 10.0, key="qqqi_decay_pct", step=0.1)
 
-if st.sidebar.button("🔄  ᆫ", use_container_width=True):
+if st.sidebar.button("🔄 초기화", use_container_width=True):
     st.session_state.clear()
     st.query_params.clear()
     st.rerun()
@@ -404,7 +403,7 @@ if st.session_state.compact_view:
 
     st.dataframe(
         styled,
-        height=380,
+        height=320,
         use_container_width=True,
         hide_index=True
     )
