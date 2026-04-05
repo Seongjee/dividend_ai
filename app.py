@@ -45,25 +45,17 @@ def get_live_data():
 # =========================
 # 사이드바
 # =========================
+st.sidebar.title("⚙️ 설정")
 
-is_mobile = st.sidebar.toggle("📱 모바일 모드", False)
-st.sidebar.caption("🔗 현재 설정은 URL에 자동 저장됩니다")
+is_mobile = st.sidebar.toggle("모바일 모드", True)
+expanded_default = not is_mobile
 
 if st.sidebar.button("🔄 초기화"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    st.session_state.clear()
+    st.query_params.clear()
     st.rerun()
 
-st.sidebar.markdown("### 📱 화면 모드")
-
-if is_mobile:
-    st.caption("👉 모바일 최적화 화면")
-else:
-    st.caption("👉 PC 전체 화면")
-
-st.sidebar.title("⚙️ 시뮬 설정")
-
-use_live = st.sidebar.toggle("📡 실시간 데이터 사용", True)
+use_live = st.sidebar.toggle("실시간 데이터 사용", True)
 
 # 👉 업데이트 시간 표시용
 if "last_update" not in st.session_state:
@@ -84,6 +76,19 @@ if use_live:
             st.session_state.qqqi_div = float(q_div_live)
         if s_div_live is not None:
             st.session_state.schd_div = float(s_div_live)
+
+        if "qqqi_price" not in st.session_state:
+            st.session_state.qqqi_price = float(price)
+
+        if "exchange_rate" not in st.session_state:
+            st.session_state.exchange_rate = float(fx)
+
+        if "qqqi_div" not in st.session_state:
+            st.session_state.qqqi_div = float(q_div_live)
+
+        if "schd_div" not in st.session_state:
+            st.session_state.schd_div = float(s_div_live)
+
 
         st.session_state.last_update = datetime.now()
 
@@ -107,7 +112,7 @@ def input_int(label, key, default, step=1, disabled=False):
     if key not in st.session_state:
         st.session_state[key] = load_from_query(key, default, int)
 
-    return st.sidebar.number_input(
+    return st.number_input(   # 🔥 sidebar 제거
         label,
         step=step,
         key=key,
@@ -119,7 +124,7 @@ def input_float(label, key, default, step=0.01, disabled=False):
     if key not in st.session_state:
         st.session_state[key] = load_from_query(key, default, float)
 
-    return st.sidebar.number_input(
+    return st.number_input(
         label,
         step=float(step),
         key=key,
@@ -127,15 +132,45 @@ def input_float(label, key, default, step=0.01, disabled=False):
     )
 
 # =========================
-# 입력창
+# 📦 사이드바 입력 (Expander 구조)
 # =========================
-qqqi_qty = input_int("QQQI 수량", "qqqi_qty", 500)
-schd_qty = input_int("SCHD 수량", "schd_qty", 5000)
+# 기본 설정
+with st.sidebar.expander("📦 기본 설정", expanded=True):
 
-qqqi_div = input_float("QQQI 월 배당 ($)", "qqqi_div", 0.61, 0.01, disabled=use_live)
-schd_div = input_float("SCHD 분기 배당 ($)", "schd_div", 0.28, 0.01, disabled=use_live)
-exchange_rate = input_float("환율", "exchange_rate", 1499.0, 1.0, disabled=use_live)
-qqqi_price = input_float("QQQI 가격 ($)", "qqqi_price", 50.0, 0.01, disabled=use_live)
+    qqqi_qty = input_int("QQQI 수량", "qqqi_qty", 500)
+    schd_qty = input_int("SCHD 수량", "schd_qty", 5000)
+
+    monthly_need_m = input_int("월 생활비 (백만원)", "monthly_need_m", 200)
+    monthly_need = monthly_need_m * 10000
+
+    cash_years = st.slider("💰 현금으로 버틸 기간 (년)", 0, 3, 1)
+    reinvest = st.toggle("배당 재투자", True)
+
+# 상세 옵션
+with st.sidebar.expander("📊 상세 옵션", expanded=expanded_default):
+
+    years = st.selectbox("시뮬 기간", [10, 20, 30])
+    months = years * 12
+
+    tax_rate = st.slider("세율 (%)", 0, 30, 15) / 100
+    inflation_rate = st.slider("물가 상승률 (%)", 0.0, 5.0, 3.0) / 100
+
+    growth_rate = st.slider("SCHD 성장률 (%)", 0.0, 10.0, 5.0) / 100
+    qqqi_decay = st.slider("QQQI 감소율 (%)", 0.0, 10.0, 3.0) / 100
+
+# 현재 가격
+with st.sidebar.expander("💰 현재 가격", expanded=expanded_default):
+    qqqi_div = input_float(f"QQQI 월 배당 (${st.session_state.qqqi_div:,.4f})", "qqqi_div", 0.61, 0.0001, disabled=use_live)
+    schd_div = input_float(f"SCHD 분기 배당 (${st.session_state.schd_div:,.4f})", "schd_div", 0.28, 0.0001, disabled=use_live)
+    qqqi_price = input_float(f"QQQI 가격 (${st.session_state.qqqi_price:,.2f})", "qqqi_price", 50.0, 0.0001, disabled=use_live)
+    exchange_rate = input_float(f"환율 ({st.session_state.exchange_rate:,.2f}원)", "exchange_rate", 1499.0, 1.0, disabled=use_live)
+
+    # 현재값 표시
+    if use_live:
+        if st.session_state.last_update:
+            st.caption(
+                f"🕒 업데이트: {st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
 # =========================
 # 🔥 입력값 URL 저장
@@ -152,41 +187,6 @@ for key in [
     if key in st.session_state:
         st.query_params[key] = st.session_state[key]
         
-# =========================
-# 🔥 현재값 표시 (핵심 추가)
-# =========================
-if use_live:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("📊 **현재 실시간 값**")
-
-    #st.sidebar.write(f"QQQI 가격: ${st.session_state.qqqi_price:,.2f}")
-    st.sidebar.write(f"QQQI 배당: ${st.session_state.qqqi_div:,.4f}")
-    st.sidebar.write(f"SCHD 배당: ${st.session_state.schd_div:,.4f}")
-    st.sidebar.write(f"환율: {st.session_state.exchange_rate:,.0f}원")
-    st.sidebar.write(f"QQQI 가격: ${float(st.session_state.qqqi_price):,.2f}")
-
-    if st.session_state.last_update:
-        st.sidebar.caption(
-            f"🕒 업데이트: {st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-# =========================
-# 나머지 설정
-# =========================
-tax_rate = st.sidebar.slider("세율 (%)", 0, 30, 15) / 100
-growth_rate = st.sidebar.slider("SCHD 성장률 (%)", 0.0, 10.0, 5.0) / 100
-qqqi_decay = st.sidebar.slider("QQQI 감소율 (%)", 0.0, 10.0, 3.0) / 100
-inflation_rate = st.sidebar.slider("물가 상승률 (%)", 0.0, 5.0, 3.0) / 100
-
-monthly_need_m = input_int("월 생활비 (백만원)", "monthly_need_m", 200)
-monthly_need = monthly_need_m * 10000
-
-years = st.sidebar.selectbox("시뮬 기간", [10, 20, 30])
-months = years * 12
-
-reinvest = st.sidebar.toggle("🔁 배당 재투자", True)
-cash_years = st.sidebar.slider("💰 현금으로 버틸 기간 (년)", 0, 3, 1)
-
 # =========================
 # 시뮬레이션 (기존 그대로)
 # =========================
@@ -252,11 +252,55 @@ quarter_now = df["원화"].iloc[-3:].sum()
 quarter_need = df["월 생활비"].iloc[-3:].sum()
 quarter_gap = quarter_now - quarter_need
 
-col1, col2, col3 = st.columns(3)
+# =========================
+# 🔥 KPI 카드 UI
+# =========================
 
-col1.metric(f"{years}년 후 분기 배당", f"{quarter_now:,.0f}원")
-col2.metric(f"{years}년 후 분기 생활비", f"{quarter_need:,.0f}원")
-col3.metric(f"{years}년 후 분기 차이", f"{quarter_gap:,.0f}원")
+def kpi_card(title, value, color):
+    st.markdown(f"""
+    <div style="
+        background-color:{color};
+        padding:16px;
+        border-radius:12px;
+        text-align:center;
+        color:white;
+        font-weight:600;
+    ">
+        <div style="font-size:14px; opacity:0.9;">{title}</div>
+        <div style="font-size:22px; margin-top:6px;">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# 👉 색상 로직
+if quarter_gap > 0:
+    gap_color = "#2ecc71"   # 초록
+else:
+    gap_color = "#e74c3c"   # 빨강
+
+
+# 👉 PC / 모바일 분기
+if not is_mobile:
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        kpi_card(f"{years}년 후 분기 배당", f"{quarter_now:,.0f}원", "#3498db")
+
+    with col2:
+        kpi_card(f"{years}년 후 분기 생활비", f"{quarter_need:,.0f}원", "#f39c12")
+
+    with col3:
+        kpi_card(f"{years}년 후 분기 차이", f"{quarter_gap:,.0f}원", gap_color)
+
+else:
+    kpi_card(f"{years}년 후 분기 배당", f"{quarter_now:,.0f}원", "#3498db")
+    st.markdown("")
+
+    kpi_card(f"{years}년 후 분기 생활비", f"{quarter_need:,.0f}원", "#f39c12")
+    st.markdown("")
+
+    kpi_card(f"{years}년 후 분기 차이", f"{quarter_gap:,.0f}원", gap_color)
+
 
 # 🔥 상태 표시
 if quarter_gap > 0:
@@ -294,14 +338,13 @@ styled = df_display.style.format({
 }).apply(highlight, axis=1)
 
 if not is_mobile:
-    # 💻 PC → 기존 그대로
+    # 💻 PC
     st.dataframe(styled, height=520)
 
 else:
-    # 📱 모바일 → 심플 + 핵심 유지
-    # st.subheader("📱 모바일 요약")
+    # 📱 모바일
 
-    # 👉 핵심: 원화 + 달러 둘 다 유지
+    # 원화 + 달러 둘 다 유지
     mobile_df = df[
         [
             "날짜",
@@ -331,7 +374,7 @@ import pandas as pd
 
 df_q = df.dropna(subset=["분기 배당"]).copy()
 
-# ✅ 1️⃣ 날짜 타입 변환 (🔥 핵심)
+# ✅ 1️⃣ 날짜 타입 변환
 df_q['날짜'] = pd.to_datetime(df_q['날짜'], format="%Y-%m")
 
 # ✅ 색상
@@ -367,7 +410,7 @@ fig.add_trace(go.Bar(
     hovertemplate="%{y:,.0f}원"
 ))
 
-# ✅ 2️⃣ Y축 백만원 단위 (🔥 핵심)
+# ✅ 2️⃣ Y축 백만원 단위
 fig.update_layout(
     plot_bgcolor='white',
     paper_bgcolor='white',
