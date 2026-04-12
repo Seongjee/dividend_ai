@@ -174,7 +174,7 @@ st.title("💰 Dividend AI")
 
 top1, top2 = st.columns([3, 1])
 with top1:
-    st.caption("QQQI + SCHD 배당 시뮬레이터")
+    st.caption(f"배당 시뮬레이터 : QQQI {int(st.session_state.qqqi_qty):,}주 · SCHD {int(st.session_state.schd_qty):,}주")
 with top2:
     st.toggle("간단 보기", key="compact_view")
 
@@ -182,7 +182,7 @@ with top2:
 # 본문 상단 빠른 설정 (간단 보기용)
 # =========================
 if st.session_state.compact_view:
-    with st.expander("⚡ 빠른 설정", expanded=True):
+    with st.expander("⚡ 빠른 설정", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
             st.number_input("QQQI 수량", min_value=0, step=100, key="qqqi_qty", format="%d")
@@ -364,92 +364,9 @@ df["분기 차이"] = (df["분기 배당"] - df["분기 생활비"]).astype("Int
 df.loc[(df.index + 1) % 3 != 0, ["분기 배당", "분기 생활비", "분기 차이"]] = None
 
 # =========================
-# 요약
-# =========================
-quarter_now = int(df["원화"].iloc[-3:].sum())
-quarter_need = int(df["월 생활비"].iloc[-3:].sum())
-quarter_gap = int(quarter_now - quarter_need)
-gap_sign = f"{quarter_gap:+,}원"
-
-if st.session_state.compact_view:
-    st.info(
-        f"마지막 분기 · 배당 {quarter_now:,.0f}원 / 생활비 {quarter_need:,.0f}원 / 차이 {gap_sign}"
-    )
-else:
-    k1, k2, k3 = st.columns(3)
-    k1.metric("마지막 분기 배당", f"{quarter_now:,.0f}원")
-    k2.metric("마지막 분기 생활비", f"{quarter_need:,.0f}원")
-    k3.metric("마지막 분기 차이", gap_sign)
-
-if quarter_gap > 0:
-    st.success("✅ 배당 생활 가능")
-else:
-    st.warning("⚠️ 생활비 부족")
-
-# =========================
-# 표
-# =========================
-def plus_minus_format(x):
-    if pd.isnull(x):
-        return ""
-    return f"{int(x):+,}"
-
-def highlight(row):
-    if pd.notnull(row["분기 배당"]):
-        if row["분기 차이"] > 0:
-            return ["background-color: rgba(34,197,94,0.10)"] * len(row)
-        else:
-            return ["background-color: rgba(239,68,68,0.10)"] * len(row)
-    return ["color:#999"] * len(row)
-
-if st.session_state.compact_view:
-    df_display = df[
-        ["연차", "날짜", "QQQI", "분기 배당", "분기 차이"]
-    ].copy()
-
-    styled = df_display.style.format({
-        "QQQI": "{:,.0f}",
-        "분기 배당": "{:,.0f}",
-        "분기 차이": plus_minus_format,
-    }).apply(highlight, axis=1)
-
-    st.dataframe(
-        styled,
-        height=340,
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    df_display = df[
-        [
-            "연차", "날짜",
-            "QQQI", "QQQI 배당($)",
-            "SCHD", "SCHD 배당($)",
-            "월 생활비",
-            "분기 배당", "분기 생활비", "분기 차이"
-        ]
-    ].copy()
-
-    styled = df_display.style.format({
-        "QQQI 배당($)": "{:,.2f}",
-        "SCHD 배당($)": "{:,.2f}",
-        "월 생활비": "{:,.0f}",
-        "분기 배당": "{:,.0f}",
-        "분기 생활비": "{:,.0f}",
-        "분기 차이": plus_minus_format,
-    }).apply(highlight, axis=1)
-
-    st.dataframe(
-        styled,
-        height=500,
-        use_container_width=True,
-        hide_index=True
-    )
-
-# =========================
 # 그래프
 # =========================
-st.markdown("#### 📈 배당 흐름")
+st.markdown("#### 배당 흐름")
 
 st.markdown("""
 <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:-4px 0 8px 0; font-size:0.9rem;">
@@ -636,7 +553,18 @@ fig.update_xaxes(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# 월 300만원 도달 시점 계산
+# =========================
+# 그래프 아래 핵심 정보
+# =========================
+
+# 분기 기준 현재 상태 계산 (여기서 다시 계산하는게 안정적)
+quarter_now = int(df["원화"].iloc[-3:].sum())
+quarter_need = int(df["월 생활비"].iloc[-3:].sum())
+quarter_gap = int(quarter_now - quarter_need)
+
+# -------------------------
+# 월 300만원 도달 시점
+# -------------------------
 def format_year_month_from_ym(target_str):
     start = datetime.today()
     target_date = datetime.strptime(target_str, "%Y-%m")
@@ -645,9 +573,8 @@ def format_year_month_from_ym(target_str):
     years = diff_months // 12
     months = diff_months % 12
 
-    if months == 0:
-        return f"{target_str} ({years}년)"
-    return f"{target_str} ({years}년 {months}개월)"
+    return f"{target_str} ({years}년)" if months == 0 else f"{target_str} ({years}년 {months}개월)"
+
 
 quarter_df = df.dropna(subset=["분기 배당"])
 target = 3000000 * 3
@@ -655,27 +582,88 @@ reach = quarter_df[quarter_df["분기 배당"] >= target]
 
 if not reach.empty:
     first_date = reach.iloc[0]["날짜"]
-    reach_caption = f"🎯 월 300만원 달성: {format_year_month_from_ym(first_date)}"
+    reach_caption = f"🎯 월 300 달성: {format_year_month_from_ym(first_date)}"
 else:
-    reach_caption = "🎯 월 300만원 달성: 미도달"
+    reach_caption = "🎯 월 300 달성: 미도달"
 
+
+# -------------------------
+# 배당 시작 시점
+# -------------------------
 if cross_date is not None:
-    start = datetime.today()
-
-    diff_months = (cross_date.year - start.year) * 12 + (cross_date.month - start.month)
+    diff_months = (cross_date.year - start_date.year) * 12 + (cross_date.month - start_date.month)
     years = diff_months // 12
     months = diff_months % 12
+    period_text = f"{years}년" if months == 0 else f"{years}년 {months}개월"
+    start_text = f"{cross_date.strftime('%Y-%m')} ({period_text})"
+else:
+    start_text = "없음"
 
-    if months == 0:
-        period_text = f"{years}년"
-    else:
-        period_text = f"{years}년 {months}개월"
+target_text = format_year_month_from_ym(first_date) if not reach.empty else "미도달"
 
-    st.caption(
-        f"🟢 배당 생활 시작: {cross_date.strftime('%Y-%m')} "
-        f"({period_text}) 후 분기 배당금이 생활비 초과"
+st.markdown(f"""
+*🟢 배당 생활 시작 : {start_text}*  
+*🎯 월 300 달성 : {target_text}*
+""")
+
+# =========================
+# 표
+# =========================
+st.markdown("#### 배당 시뮬레이션")
+
+def plus_minus_format(x):
+    if pd.isnull(x):
+        return ""
+    return f"{int(x):+,}"
+
+def highlight(row):
+    if pd.notnull(row["분기 배당"]):
+        if row["분기 차이"] > 0:
+            return ["background-color: rgba(34,197,94,0.10)"] * len(row)
+        else:
+            return ["background-color: rgba(239,68,68,0.10)"] * len(row)
+    return ["color:#999"] * len(row)
+
+if st.session_state.compact_view:
+    df_display = df[
+        ["연차", "날짜", "QQQI", "분기 배당", "분기 차이"]
+    ].copy()
+
+    styled = df_display.style.format({
+        "QQQI": "{:,.0f}",
+        "분기 배당": "{:,.0f}",
+        "분기 차이": plus_minus_format,
+    }).apply(highlight, axis=1)
+
+    st.dataframe(
+        styled,
+        height=340,
+        use_container_width=True,
+        hide_index=True
     )
 else:
-    st.caption("🔴 시뮬 기간 안에서는 분기 배당이 분기 생활비를 넘지 못함")
+    df_display = df[
+        [
+            "연차", "날짜",
+            "QQQI", "QQQI 배당($)",
+            "SCHD", "SCHD 배당($)",
+            "월 생활비",
+            "분기 배당", "분기 생활비", "분기 차이"
+        ]
+    ].copy()
 
-st.caption(reach_caption)
+    styled = df_display.style.format({
+        "QQQI 배당($)": "{:,.2f}",
+        "SCHD 배당($)": "{:,.2f}",
+        "월 생활비": "{:,.0f}",
+        "분기 배당": "{:,.0f}",
+        "분기 생활비": "{:,.0f}",
+        "분기 차이": plus_minus_format,
+    }).apply(highlight, axis=1)
+
+    st.dataframe(
+        styled,
+        height=500,
+        use_container_width=True,
+        hide_index=True
+    )
