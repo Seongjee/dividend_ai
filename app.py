@@ -28,6 +28,7 @@ DEFAULTS = {
     "qqqi_price": 50.0,
     "exchange_rate": 1499.0,
     "last_update": "",
+    "settings_open_all": False,
 }
 
 # =========================
@@ -193,18 +194,33 @@ if st.session_state.compact_view:
 # =========================
 st.sidebar.title("⚙️ 설정")
 
+sb1, sb2, sb3 = st.sidebar.columns(3)
+with sb1:
+    if st.button("펼침", use_container_width=True):
+        st.session_state.settings_open_all = True
+with sb2:
+    if st.button("닫기", use_container_width=True):
+        st.session_state.settings_open_all = False
+with sb3:
+    if st.button("초기화", use_container_width=True):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+
+exp_open = st.session_state.settings_open_all
+
 if not st.session_state.compact_view:
-    with st.sidebar.expander("⚡ 빠른 설정", expanded=True):
+    with st.sidebar.expander("⚡ 빠른 설정", expanded=True if exp_open else True):
         st.number_input("QQQI 수량", min_value=0, step=100, key="qqqi_qty", format="%d")
         st.number_input("SCHD 수량", min_value=0, step=100, key="schd_qty", format="%d")
         st.number_input("월 생활비 (백만원)", min_value=0, step=10, key="monthly_need_m", format="%d")
         st.selectbox("시뮬 기간", [10, 20, 30], key="years")
 else:
-    with st.sidebar.expander("⚡ 기본 설정", expanded=False):
+    with st.sidebar.expander("⚡ 기본 설정", expanded=exp_open):
         st.number_input("월 생활비 (백만원)", min_value=0, step=10, key="monthly_need_m", format="%d")
         st.selectbox("시뮬 기간", [10, 20, 30], key="years")
 
-with st.sidebar.expander("💰 현재 값", expanded=not st.session_state.compact_view):
+with st.sidebar.expander("💰 현재 값", expanded=exp_open or not st.session_state.compact_view):
     st.toggle("실시간 데이터 사용", key="use_live")
 
     # use_live 상태 변화 감지
@@ -263,7 +279,7 @@ with st.sidebar.expander("💰 현재 값", expanded=not st.session_state.compac
     if live_error:
         st.warning(f"⚠️ 일부 데이터 실패: {live_error}")
 
-with st.sidebar.expander("📊 시뮬 옵션", expanded=False):
+with st.sidebar.expander("📊 시뮬 옵션", expanded=exp_open):
     st.slider("현금으로 버틸 기간 (년)", 0, 3, key="cash_years")
     st.toggle("배당 재투자(QQQI)", key="reinvest")
     st.caption("ON 시 배당금으로 QQQI 재매수 가정")
@@ -271,11 +287,6 @@ with st.sidebar.expander("📊 시뮬 옵션", expanded=False):
     st.slider("물가 상승률 (%)", 0.0, 5.0, key="inflation_rate_pct", step=0.1)
     st.slider("SCHD 성장률 (%)", 0.0, 10.0, key="growth_rate_pct", step=0.1)
     st.slider("QQQI 감소율 (%)", 0.0, 10.0, key="qqqi_decay_pct", step=0.1)
-
-if st.sidebar.button("🔄 초기화", use_container_width=True):
-    st.session_state.clear()
-    st.query_params.clear()
-    st.rerun()
 
 sync_query_params()
 
@@ -440,46 +451,152 @@ else:
 # =========================
 st.markdown("#### 📈 배당 흐름")
 
+st.markdown("""
+<div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:-4px 0 8px 0; font-size:0.9rem;">
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="display:inline-block; width:42px; height:0; border-top:3px dashed #ef4444;"></span>
+    <span>생활비</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="display:inline-block; width:42px; height:0; border-top:3px solid #3b82f6;"></span>
+    <span>배당</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="display:inline-block; width:42px; height:8px; background:rgba(239,68,68,0.18); border-radius:3px;"></span>
+    <span>부족</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="display:inline-block; width:42px; height:8px; background:rgba(34,197,94,0.18); border-radius:3px;"></span>
+    <span>여유</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
 df_q = df.dropna(subset=["분기 배당"]).copy()
 df_q["날짜"] = pd.to_datetime(df_q["날짜"], format="%Y-%m")
-df_q["차이표시"] = df_q["분기 차이"].apply(
-    lambda x: f"{int(x):+,}원" if pd.notnull(x) else ""
-)
+df_q["차이"] = (df_q["분기 배당"] - df_q["분기 생활비"]).astype(float)
 
-graph_height = 220 if st.session_state.compact_view else 320
+# 현금 버티기 이후 구간만 기준으로 첫 손익분기점 찾기
+cutoff_date = start_date + relativedelta(months=cash_years * 12)
+active_q = df_q[df_q["날짜"] >= pd.Timestamp(cutoff_date)].copy()
+
+cross_date = None
+if not active_q.empty:
+    cross_candidates = active_q[active_q["차이"] >= 0]
+    if not cross_candidates.empty:
+        cross_date = cross_candidates.iloc[0]["날짜"]
+
+graph_height = 240 if st.session_state.compact_view else 360
 
 fig = go.Figure()
 
+# 차이 영역: 여유
+surplus_bottom = df_q["분기 생활비"].where(df_q["차이"] >= 0)
+surplus_top = df_q["분기 배당"].where(df_q["차이"] >= 0)
+
+fig.add_trace(go.Scatter(
+    x=df_q["날짜"],
+    y=surplus_bottom,
+    mode="lines",
+    line=dict(width=0),
+    hoverinfo="skip",
+    showlegend=False
+))
+fig.add_trace(go.Scatter(
+    x=df_q["날짜"],
+    y=surplus_top,
+    mode="lines",
+    fill="tonexty",
+    fillcolor="rgba(34,197,94,0.18)",
+    line=dict(width=0),
+    hovertemplate="여유 %{customdata:,.0f}원<extra></extra>",
+    customdata=df_q["차이"].where(df_q["차이"] >= 0),
+    name="여유",
+    showlegend=False
+))
+
+# 차이 영역: 부족
+deficit_bottom = df_q["분기 배당"].where(df_q["차이"] < 0)
+deficit_top = df_q["분기 생활비"].where(df_q["차이"] < 0)
+
+fig.add_trace(go.Scatter(
+    x=df_q["날짜"],
+    y=deficit_bottom,
+    mode="lines",
+    line=dict(width=0),
+    hoverinfo="skip",
+    showlegend=False
+))
+
+fig.add_trace(go.Scatter(
+    x=df_q["날짜"],
+    y=deficit_top,
+    mode="lines",
+    fill="tonexty",
+    fillcolor="rgba(239,68,68,0.18)",
+    line=dict(width=0),
+    hovertemplate="부족 %{customdata:,.0f}원<extra></extra>",
+    customdata=df_q["차이"].abs().where(df_q["차이"] < 0),
+    name="부족",
+    showlegend=False
+))
+
+# 메인 라인
 fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=df_q["분기 배당"],
     fill="tozeroy",
-    line=dict(width=2),
-    hovertemplate="배당 %{y:,.0f}원<extra></extra>",
+    fillcolor="rgba(59,130,246,0.12)",
+    line=dict(width=2.5, color="#3b82f6"),
+    name="배당",
     showlegend=False,
-    name="배당"
+    hovertemplate="배당 %{y:,.0f}원<extra></extra>"
 ))
 
 fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=df_q["분기 생활비"],
-    line=dict(dash="dash", width=2),
-    hovertemplate="생활비 %{y:,.0f}원<extra></extra>",
+    line=dict(dash="dash", width=2.5, color="#ef4444"),
+    name="생활비",
     showlegend=False,
-    name="생활비"
+    hovertemplate="생활비 %{y:,.0f}원<extra></extra>"
 ))
 
-# 차이 표시용 투명 trace
-fig.add_trace(go.Scatter(
-    x=df_q["날짜"],
-    y=df_q["분기 배당"],
-    mode="lines",
-    line=dict(width=0),
-    customdata=df_q["차이표시"],
-    hovertemplate="<b>차이 %{customdata}</b><extra></extra>",
-    showlegend=False,
-    name="차이"
-))
+# 첫 배당 생활 시작 지점 마커 + 세로선
+if cross_date is not None:
+    cross_row = df_q[df_q["날짜"] == cross_date].iloc[0]
+
+    # 마커 (범례 제외)
+    fig.add_trace(go.Scatter(
+        x=[cross_date],
+        y=[cross_row["분기 배당"]],
+        mode="markers",
+        marker=dict(size=10, color="#10b981"),
+        showlegend=False,
+        hovertemplate=f"배당 생활 시작 {cross_date.strftime('%Y-%m')}<extra></extra>"
+    ))
+
+    # 텍스트
+    fig.add_annotation(
+        x=cross_date,
+        y=cross_row["분기 배당"],
+        text="배당 생활 시작",
+        showarrow=False,
+        yshift=18,
+        font=dict(size=12, color="#6b7280")
+    )
+
+    # 세로선
+    fig.add_shape(
+        type="line",
+        x0=cross_date,
+        x1=cross_date,
+        y0=0,
+        y1=1,
+        xref="x",
+        yref="paper",
+        line=dict(width=1.5, dash="dot", color="rgba(16,185,129,0.8)")
+    )
 
 fig.update_layout(
     plot_bgcolor="white",
@@ -488,7 +605,14 @@ fig.update_layout(
     hovermode="x unified",
     height=graph_height,
     margin=dict(l=0, r=0, t=0, b=0),
-    showlegend=False
+    showlegend=False,
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="left",
+        x=0
+    )
 )
 
 fig.update_yaxes(
@@ -512,83 +636,46 @@ fig.update_xaxes(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# =========================
-# 핵심 결과
-# =========================
-st.markdown("#### 📌 핵심 결과")
+# 월 300만원 도달 시점 계산
+def format_year_month_from_ym(target_str):
+    start = datetime.today()
+    target_date = datetime.strptime(target_str, "%Y-%m")
+    diff_months = (target_date.year - start.year) * 12 + (target_date.month - start.month)
 
-# 1. 월 300만원
+    years = diff_months // 12
+    months = diff_months % 12
+
+    if months == 0:
+        return f"{target_str} ({years}년)"
+    return f"{target_str} ({years}년 {months}개월)"
+
 quarter_df = df.dropna(subset=["분기 배당"])
 target = 3000000 * 3
 reach = quarter_df[quarter_df["분기 배당"] >= target]
 
 if not reach.empty:
     first_date = reach.iloc[0]["날짜"]
-    start = datetime.today()
-    target_date = datetime.strptime(first_date, "%Y-%m")
-    diff_months = (target_date.year - start.year) * 12 + (target_date.month - start.month)
-    diff_years = diff_months / 12
-    reach_text = f"{first_date} ({diff_years:.1f}년)"
+    reach_caption = f"🎯 월 300만원 달성: {format_year_month_from_ym(first_date)}"
 else:
-    reach_text = "미도달"
+    reach_caption = "🎯 월 300만원 달성: 미도달"
 
-# 2. 졸업 수량
-found = False
-graduate_qty = None
+if cross_date is not None:
+    start = datetime.today()
 
-for qty in range(int(qqqi_qty), int(max(qqqi_qty * 3, qqqi_qty + 50)), 50):
-    q = qty
-    temp = []
+    diff_months = (cross_date.year - start.year) * 12 + (cross_date.month - start.month)
+    years = diff_months // 12
+    months = diff_months % 12
 
-    for m in range(months):
-        year_index = m // 12
+    if months == 0:
+        period_text = f"{years}년"
+    else:
+        period_text = f"{years}년 {months}개월"
 
-        q_div_now = qqqi_div * ((1 - qqqi_decay) ** year_index)
-        s_div_now = schd_div * ((1 + growth_rate) ** year_index)
+    st.caption(
+        f"🟢 배당 생활 시작: {cross_date.strftime('%Y-%m')} "
+        f"({period_text}) 후 분기 배당금이 생활비 초과"
+    )
+else:
+    st.caption("🔴 시뮬 기간 안에서는 분기 배당이 분기 생활비를 넘지 못함")
 
-        q_income = q * q_div_now * (1 - tax_rate)
-        s_income = schd_qty * s_div_now * (1 - tax_rate) if (m + 1) % 3 == 0 else 0
-
-        total = (q_income + s_income) * exchange_rate
-
-        if m < cash_years * 12:
-            need = 0
-        else:
-            need = monthly_need * ((1 + inflation_rate) ** year_index)
-
-        temp.append(total - need)
-
-    temp_df = pd.DataFrame(temp, columns=["gap"])
-    temp_df["quarter"] = temp_df["gap"].rolling(3).sum()
-    qdf = temp_df.dropna()
-
-    if not qdf.empty and (qdf["quarter"] >= 0).all():
-        graduate_qty = qty
-        found = True
-        break
-
-graduate_text = f"{graduate_qty:,}주" if found else "미충족"
-
-# 3. 안정 시점
-start_idx = cash_years * 12
-quarter_df2 = df.iloc[start_idx:].dropna(subset=["분기 차이"])
-
-stable_start = None
-for i in range(len(quarter_df2)):
-    sub = quarter_df2.iloc[i:]
-    if (sub["분기 차이"] >= 0).all():
-        stable_start = quarter_df2.iloc[i]["날짜"]
-        break
-
-stable_text = f"{stable_start}" if stable_start else "없음"
-
-summary_df = pd.DataFrame({
-    "항목": ["월 300만원", "QQQI 졸업", "안정 시점"],
-    "결과": [reach_text, graduate_text, stable_text]
-})
-
-st.dataframe(
-    summary_df,
-    use_container_width=True,
-    hide_index=True
-)
+st.caption(reach_caption)
