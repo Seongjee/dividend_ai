@@ -371,19 +371,19 @@ st.markdown("#### 배당 흐름")
 st.markdown("""
 <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:-4px 0 8px 0; font-size:0.9rem;">
   <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:42px; height:0; border-top:3px dashed #ef4444;"></span>
+    <span style="display:inline-block; width:20px; height:0; border-top:3px dashed #ef4444;"></span>
     <span>생활비</span>
   </div>
   <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:42px; height:0; border-top:3px solid #3b82f6;"></span>
+    <span style="display:inline-block; width:20px; height:0; border-top:3px solid #3b82f6;"></span>
     <span>배당</span>
   </div>
   <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:42px; height:8px; background:rgba(239,68,68,0.18); border-radius:3px;"></span>
+    <span style="display:inline-block; width:20px; height:8px; background:rgba(239,68,68,0.18); border-radius:3px;"></span>
     <span>부족</span>
   </div>
   <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:42px; height:8px; background:rgba(34,197,94,0.18); border-radius:3px;"></span>
+    <span style="display:inline-block; width:20px; height:8px; background:rgba(34,197,94,0.18); border-radius:3px;"></span>
     <span>여유</span>
   </div>
 </div>
