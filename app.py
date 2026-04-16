@@ -70,14 +70,18 @@ if "_live_loaded" not in st.session_state:
 if "_prev_use_live" not in st.session_state:
     st.session_state._prev_use_live = st.session_state.use_live
 
+if "show_setting" not in st.session_state:
+    st.session_state.show_setting = False
+
+
 # =========================
 # 스타일
 # =========================
 st.markdown("""
 <style>
 .block-container {
-    padding-top: 0.8rem;
-    padding-bottom: 1.4rem;
+    padding-top: 1.0rem;
+    padding-bottom: 2.0rem;
 }
 
 div[data-testid="stMetric"] {
@@ -87,7 +91,8 @@ div[data-testid="stMetric"] {
 }
 
 div[data-testid="stDataFrame"] div[role="table"] {
-    font-size: 0.92rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
 }
 
 /* number_input 버튼 터치 효과 완화 */
@@ -100,6 +105,41 @@ div[data-testid="stNumberInput"] button:active,
 div[data-testid="stNumberInput"] button:focus-visible {
     outline: none !important;
     box-shadow: none !important;
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 4px 10px 4px;
+}
+
+.top-left {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.top-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.stButton button {
+    height: 32px;
+    border-radius: 8px;
+    padding: 0 10 0 10px;
+}
+
+.text-btn button {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 14px;
+    color: #666;
+}
+.text-btn button:hover {
+    color: #000;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -168,26 +208,56 @@ def sync_query_params():
         st.query_params[key] = st.session_state[key]
 
 # =========================
-# 헤더
+# 헤더 + 본문 상단 컨트롤
 # =========================
-st.title("💰 Dividend AI")
+st.title("Dividend AI")
 
-top1, top2 = st.columns([3, 1])
-with top1:
-    st.caption(f"배당 시뮬레이터 : QQQI {int(st.session_state.qqqi_qty):,}주 · SCHD {int(st.session_state.schd_qty):,}주")
-with top2:
-    st.toggle("간단 보기", key="compact_view")
+if "show_setting" not in st.session_state:
+    st.session_state.show_setting = False
 
-# =========================
-# 본문 상단 빠른 설정 (간단 보기용)
-# =========================
-if st.session_state.compact_view:
-    with st.expander("⚡ 빠른 설정", expanded=False):
-        c1, c2 = st.columns(2)
-        with c1:
-            st.number_input("QQQI 수량", min_value=0, step=100, key="qqqi_qty", format="%d")
-        with c2:
-            st.number_input("SCHD 수량", min_value=0, step=100, key="schd_qty", format="%d")
+def sync_main_qty_to_actual():
+    st.session_state.qqqi_qty = int(st.session_state.main_qqqi_qty)
+    st.session_state.schd_qty = int(st.session_state.main_schd_qty)
+
+c1, c2 = st.columns([6, 1.4])
+
+with c1:
+    st.markdown(
+        f"**QQQI {int(st.session_state.qqqi_qty):,}주 · "
+        f"SCHD {int(st.session_state.schd_qty):,}주**"
+    )
+
+with c2:
+    label = "수량수정 ▴" if st.session_state.show_setting else "수량수정 ▾"
+    if st.button(label, key="toggle_setting_btn", use_container_width=True):
+        st.session_state.show_setting = not st.session_state.show_setting
+        if st.session_state.show_setting:
+            st.session_state.main_qqqi_qty = int(st.session_state.qqqi_qty)
+            st.session_state.main_schd_qty = int(st.session_state.schd_qty)
+        st.rerun()
+
+if st.session_state.show_setting:
+    if "main_qqqi_qty" not in st.session_state:
+        st.session_state.main_qqqi_qty = int(st.session_state.qqqi_qty)
+    if "main_schd_qty" not in st.session_state:
+        st.session_state.main_schd_qty = int(st.session_state.schd_qty)
+
+    st.number_input(
+        "QQQI 수량",
+        min_value=0,
+        step=100,
+        key="main_qqqi_qty",
+        format="%d",
+        on_change=sync_main_qty_to_actual
+    )
+    st.number_input(
+        "SCHD 수량",
+        min_value=0,
+        step=100,
+        key="main_schd_qty",
+        format="%d",
+        on_change=sync_main_qty_to_actual
+    )
 
 # =========================
 # 사이드바
@@ -209,18 +279,11 @@ with sb3:
 
 exp_open = st.session_state.settings_open_all
 
-if not st.session_state.compact_view:
-    with st.sidebar.expander("⚡ 빠른 설정", expanded=True if exp_open else True):
-        st.number_input("QQQI 수량", min_value=0, step=100, key="qqqi_qty", format="%d")
-        st.number_input("SCHD 수량", min_value=0, step=100, key="schd_qty", format="%d")
-        st.number_input("월 생활비 (백만원)", min_value=0, step=10, key="monthly_need_m", format="%d")
-        st.selectbox("시뮬 기간", [10, 20, 30], key="years")
-else:
-    with st.sidebar.expander("⚡ 기본 설정", expanded=exp_open):
-        st.number_input("월 생활비 (백만원)", min_value=0, step=10, key="monthly_need_m", format="%d")
-        st.selectbox("시뮬 기간", [10, 20, 30], key="years")
+with st.sidebar.expander("기본 설정", expanded=exp_open):
+    st.number_input("월 생활비 (백만원)", min_value=0, step=10, key="monthly_need_m", format="%d")
+    st.selectbox("시뮬 기간 (년)", [10, 20, 30], key="years")
 
-with st.sidebar.expander("💰 현재 값", expanded=exp_open or not st.session_state.compact_view):
+with st.sidebar.expander("현재 가격", expanded=exp_open):
     st.toggle("실시간 데이터 사용", key="use_live")
 
     # use_live 상태 변화 감지
@@ -279,7 +342,7 @@ with st.sidebar.expander("💰 현재 값", expanded=exp_open or not st.session_
     if live_error:
         st.warning(f"⚠️ 일부 데이터 실패: {live_error}")
 
-with st.sidebar.expander("📊 시뮬 옵션", expanded=exp_open):
+with st.sidebar.expander("시뮬 옵션", expanded=exp_open):
     st.slider("현금으로 버틸 기간 (년)", 0, 3, key="cash_years")
     st.toggle("배당 재투자(QQQI)", key="reinvest")
     st.caption("ON 시 배당금으로 QQQI 재매수 가정")
@@ -363,35 +426,43 @@ df["분기 차이"] = (df["분기 배당"] - df["분기 생활비"]).astype("Int
 
 df.loc[(df.index + 1) % 3 != 0, ["분기 배당", "분기 생활비", "분기 차이"]] = None
 
+
 # =========================
 # 그래프
 # =========================
-st.markdown("#### 배당 흐름")
-
-st.markdown("""
-<div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:-4px 0 8px 0; font-size:0.9rem;">
-  <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:20px; height:0; border-top:3px dashed #ef4444;"></span>
-    <span>생활비</span>
-  </div>
-  <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:20px; height:0; border-top:3px solid #3b82f6;"></span>
-    <span>배당</span>
-  </div>
-  <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:20px; height:8px; background:rgba(239,68,68,0.18); border-radius:3px;"></span>
-    <span>부족</span>
-  </div>
-  <div style="display:flex; align-items:center; gap:8px;">
-    <span style="display:inline-block; width:20px; height:8px; background:rgba(34,197,94,0.18); border-radius:3px;"></span>
-    <span>여유</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    f"""
+    <div style="margin-bottom:-6px;">
+        <span style="font-size:1.6rem; font-weight:700;">배당 흐름</span>
+        <span style="font-size:0.9rem; color:#888;">
+            (생활비 월 {int(st.session_state.monthly_need_m):,}만원 기준, 분기 배당)
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 df_q = df.dropna(subset=["분기 배당"]).copy()
 df_q["날짜"] = pd.to_datetime(df_q["날짜"], format="%Y-%m")
-df_q["차이"] = (df_q["분기 배당"] - df_q["분기 생활비"]).astype(float)
+
+# 원본 값 보관 (hover용)
+df_q["분기 배당_원"] = df_q["분기 배당"].astype(float)
+df_q["분기 생활비_원"] = df_q["분기 생활비"].astype(float)
+
+# 그래프 표시용: 백만원 단위
+df_q["분기 배당"] = df_q["분기 배당_원"] / 1_000_000
+df_q["분기 생활비"] = df_q["분기 생활비_원"] / 1_000_000
+df_q["차이"] = df_q["분기 배당"] - df_q["분기 생활비"]
+df_q["차이_원"] = df_q["분기 배당_원"] - df_q["분기 생활비_원"]
+
+# hover용 gap 텍스트
+df_q["gap_tooltip"] = df_q["차이_원"].apply(
+    lambda x: (
+        f"<span style='color:#008fff;'>여유분 {int(abs(x)):,}원</span>"
+        if x >= 0 else
+        f"<span style='color:#e91a5f;'>부족분 {int(abs(x)):,}원</span>"
+    )
+)
 
 # 현금 버티기 이후 구간만 기준으로 첫 손익분기점 찾기
 cutoff_date = start_date + relativedelta(months=cash_years * 12)
@@ -403,11 +474,13 @@ if not active_q.empty:
     if not cross_candidates.empty:
         cross_date = cross_candidates.iloc[0]["날짜"]
 
-graph_height = 240 if st.session_state.compact_view else 360
+graph_height = 240
 
 fig = go.Figure()
 
-# 차이 영역: 여유
+# -------------------------
+# 여유 / 부족 영역
+# -------------------------
 surplus_bottom = df_q["분기 생활비"].where(df_q["차이"] >= 0)
 surplus_top = df_q["분기 배당"].where(df_q["차이"] >= 0)
 
@@ -424,15 +497,12 @@ fig.add_trace(go.Scatter(
     y=surplus_top,
     mode="lines",
     fill="tonexty",
-    fillcolor="rgba(34,197,94,0.18)",
+    fillcolor="#e4f1f5",
     line=dict(width=0),
-    hovertemplate="여유 %{customdata:,.0f}원<extra></extra>",
-    customdata=df_q["차이"].where(df_q["차이"] >= 0),
-    name="여유",
+    hoverinfo="skip",
     showlegend=False
 ))
 
-# 차이 영역: 부족
 deficit_bottom = df_q["분기 배당"].where(df_q["차이"] < 0)
 deficit_top = df_q["분기 생활비"].where(df_q["차이"] < 0)
 
@@ -444,66 +514,66 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip",
     showlegend=False
 ))
-
 fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=deficit_top,
     mode="lines",
     fill="tonexty",
-    fillcolor="rgba(239,68,68,0.18)",
+    fillcolor="#f7e4e9",
     line=dict(width=0),
-    hovertemplate="부족 %{customdata:,.0f}원<extra></extra>",
-    customdata=df_q["차이"].abs().where(df_q["차이"] < 0),
-    name="부족",
+    hoverinfo="skip",
     showlegend=False
 ))
 
+# -------------------------
 # 메인 라인
+# -------------------------
 fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=df_q["분기 배당"],
-    fill="tozeroy",
-    fillcolor="rgba(59,130,246,0.12)",
-    line=dict(width=2.5, color="#3b82f6"),
+    mode="lines",
+    line=dict(width=2.5, color="#666666"),
     name="배당",
     showlegend=False,
-    hovertemplate="배당 %{y:,.0f}원<extra></extra>"
+    customdata=df_q["분기 배당_원"],
+    hovertemplate="배당금 %{customdata:,.0f}원<extra></extra>"
 ))
 
 fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=df_q["분기 생활비"],
-    line=dict(dash="dash", width=2.5, color="#ef4444"),
+    mode="lines",
+    line=dict(dash="dash", width=2.5, color="#888888"),
     name="생활비",
     showlegend=False,
-    hovertemplate="생활비 %{y:,.0f}원<extra></extra>"
+    customdata=df_q["분기 생활비_원"],
+    hovertemplate="생활비 %{customdata:,.0f}원<extra></extra>"
 ))
 
+# -------------------------
 # 첫 배당 생활 시작 지점 마커 + 세로선
+# -------------------------
 if cross_date is not None:
     cross_row = df_q[df_q["날짜"] == cross_date].iloc[0]
 
-    # 마커 (범례 제외)
     fig.add_trace(go.Scatter(
         x=[cross_date],
         y=[cross_row["분기 배당"]],
         mode="markers",
-        marker=dict(size=10, color="#10b981"),
+        marker=dict(size=13, color="#ea4193"),
         showlegend=False,
         hovertemplate=f"배당 생활 시작 {cross_date.strftime('%Y-%m')}<extra></extra>"
     ))
 
-    # 텍스트
     fig.add_annotation(
         x=cross_date,
         y=cross_row["분기 배당"],
         text="배당 생활 시작",
         showarrow=False,
         yshift=18,
-        font=dict(size=12, color="#6b7280")
+        font=dict(size=12, color="#000000")
     )
 
-    # 세로선
     fig.add_shape(
         type="line",
         x0=cross_date,
@@ -512,8 +582,47 @@ if cross_date is not None:
         y1=1,
         xref="x",
         yref="paper",
-        line=dict(width=1.5, dash="dot", color="rgba(16,185,129,0.8)")
+        line=dict(width=2.5, dash="dot", color="#ea4193")
     )
+
+# -------------------------
+# 끝 라벨
+# -------------------------
+fig.add_annotation(
+    x=df_q["날짜"].iloc[-1],
+    y=df_q["분기 배당"].iloc[-1],
+    text="배당금",
+    showarrow=False,
+    xanchor="left",
+    yanchor="middle"
+)
+
+fig.add_annotation(
+    x=df_q["날짜"].iloc[-1],
+    y=df_q["분기 생활비"].iloc[-1],
+    text="생활비",
+    showarrow=False,
+    xanchor="left",
+    yanchor="middle"
+)
+
+# hover용 gap 텍스트
+df_q["gap_text"] = df_q["차이"].apply(
+    lambda x: (
+        f"여유분 {int(abs(x)):,}원"
+        if x >= 0 else
+        f"부족분 {int(abs(x)):,}원"
+    )
+)
+fig.add_trace(go.Scatter(
+    x=df_q["날짜"],
+    y=df_q["분기 배당"],
+    mode="markers",
+    marker=dict(size=14, color="rgba(0,0,0,0)"),
+    hovertemplate="%{customdata}<extra></extra>",
+    customdata=df_q["gap_tooltip"],
+    showlegend=False
+))
 
 fig.update_layout(
     plot_bgcolor="white",
@@ -522,23 +631,19 @@ fig.update_layout(
     hovermode="x unified",
     height=graph_height,
     margin=dict(l=0, r=0, t=0, b=0),
-    showlegend=False,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="left",
-        x=0
-    )
+    showlegend=False
 )
 
 fig.update_yaxes(
     showgrid=True,
     gridcolor="rgba(0,0,0,0.06)",
     zeroline=False,
-    showticklabels=not st.session_state.compact_view,
+    showticklabels=True,
     title=None,
-    ticks=""
+    ticks="",
+    tickformat=",",
+    ticksuffix="백만원",
+    automargin=True
 )
 
 fig.update_xaxes(
@@ -553,8 +658,9 @@ fig.update_xaxes(
 
 st.plotly_chart(fig, use_container_width=True)
 
+
 # =========================
-# 그래프 아래 핵심 정보
+# 그래프 핵심 정보
 # =========================
 
 # 분기 기준 현재 상태 계산 (여기서 다시 계산하는게 안정적)
@@ -582,9 +688,9 @@ reach = quarter_df[quarter_df["분기 배당"] >= target]
 
 if not reach.empty:
     first_date = reach.iloc[0]["날짜"]
-    reach_caption = f"🎯 월 300 달성: {format_year_month_from_ym(first_date)}"
+    reach_caption = f"월 300 달성: {format_year_month_from_ym(first_date)}"
 else:
-    reach_caption = "🎯 월 300 달성: 미도달"
+    reach_caption = "월 300 달성: 미도달"
 
 
 # -------------------------
@@ -602,14 +708,21 @@ else:
 target_text = format_year_month_from_ym(first_date) if not reach.empty else "미도달"
 
 st.markdown(f"""
-*🟢 배당 생활 시작 : {start_text}*  
-*🎯 월 300 달성 : {target_text}*
+*- 배당 생활 시작 : {start_text}*  
+*- 월 300 달성 : {target_text}*
 """)
 
 # =========================
 # 표
 # =========================
-st.markdown("#### 배당 시뮬레이션")
+t1, t2 = st.columns([5, 1.5])
+
+with t1:
+    st.markdown("#### 배당 시뮬레이션 <span style='font-size:0.9rem; color:#888;'>(단위: 원)</span>", unsafe_allow_html=True)
+
+with t2:
+    st.toggle("간단 보기", key="compact_view")
+
 
 def plus_minus_format(x):
     if pd.isnull(x):
@@ -619,9 +732,9 @@ def plus_minus_format(x):
 def highlight(row):
     if pd.notnull(row["분기 배당"]):
         if row["분기 차이"] > 0:
-            return ["background-color: rgba(34,197,94,0.10)"] * len(row)
+            return ["background-color:#e4f1f5"] * len(row)
         else:
-            return ["background-color: rgba(239,68,68,0.10)"] * len(row)
+            return ["background-color:#f7e4e9"] * len(row)
     return ["color:#999"] * len(row)
 
 if st.session_state.compact_view:
@@ -637,7 +750,7 @@ if st.session_state.compact_view:
 
     st.dataframe(
         styled,
-        height=340,
+        height=220,
         use_container_width=True,
         hide_index=True
     )
