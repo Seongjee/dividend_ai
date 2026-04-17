@@ -471,7 +471,7 @@ if not active_q.empty:
     if not cross_candidates.empty:
         cross_date = cross_candidates.iloc[0]["날짜"]
 
-graph_height = 260
+graph_height = 245
 
 fig = go.Figure()
 
@@ -541,7 +541,7 @@ fig.add_trace(go.Scatter(
     x=df_q["날짜"],
     y=df_q["분기 생활비"],
     mode="lines",
-    line=dict(dash="dash", width=2.5, color="#888888"),
+    line=dict(width=2, color="#999999"),
     name="생활비",
     hoverinfo="skip",
     showlegend=False,
@@ -757,7 +757,7 @@ if st.session_state.compact_view:
 
     st.dataframe(
         styled,
-        height=350,
+        height=380,
         use_container_width=True,
         hide_index=True
     )
