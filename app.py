@@ -224,7 +224,7 @@ c1, c2 = st.columns([6, 1.4])
 with c1:
     st.markdown(
         f"**QQQI {int(st.session_state.qqqi_qty):,}주 · "
-        f"SCHD {int(st.session_state.schd_qty):,}주**"
+        f"SCHD {int(st.session_state.schd_qty):,}주 배당 시뮬레이션**"
     )
 
 with c2:
